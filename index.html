@@ -28,8 +28,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const apiKey = "your-api-key-here"; // Replace with your ORS key
-    let routeLayer;
+    const proxyUrl = "https://bdab58c3-c7ac-4bf6-aefe-63e42a0f075c-00-b6qrx55zbg65.picard.replit.dev";
 
     const stateAbbreviations = {
       "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
@@ -49,10 +48,13 @@
       maxZoom: 18
     }).addTo(map);
 
-    async function geocode(place) {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
+    let routeLayer;
+
+    async function geocodeNominatim(place) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
+      const res = await fetch(url);
       const data = await res.json();
-      if (!data[0]) throw new Error(`Location not found: ${place}`);
+      if (!data.length) throw new Error(`Location not found: ${place}`);
       return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
     }
 
@@ -66,23 +68,20 @@
 
     document.getElementById("routeForm").addEventListener("submit", async function (e) {
       e.preventDefault();
-
       const start = document.getElementById("start").value;
       const end = document.getElementById("end").value;
 
       try {
         const [startCoords, endCoords] = await Promise.all([
-          geocode(start),
-          geocode(end)
+          geocodeNominatim(start),
+          geocodeNominatim(end)
         ]);
 
         const body = { coordinates: [startCoords, endCoords] };
-        const routeResp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+
+        const routeResp = await fetch(`${proxyUrl}/route`, {
           method: 'POST',
-          headers: {
-            'Authorization': apiKey,
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
 
@@ -94,15 +93,15 @@
 
         if (routeLayer) map.removeLayer(routeLayer);
         routeLayer = L.geoJSON(routeData).addTo(map);
+
         map.fitBounds([
           [startCoords[1], startCoords[0]],
           [endCoords[1], endCoords[0]]
         ]);
 
-        // Sample 10 points across route
+        // Route of Travel - Get state codes
         const coords = routeData.features[0].geometry.coordinates;
-        const sampledCoords = coords.filter((_, idx) => idx % Math.ceil(coords.length / 10) === 0);
-
+        const sampledCoords = coords.filter((_, i) => i % Math.ceil(coords.length / 10) === 0);
         const stateSet = new Set();
         for (const [lon, lat] of sampledCoords) {
           const state = await getStateFromCoords(lat, lon);
