@@ -31,44 +31,68 @@
       maxZoom: 18
     }).addTo(map);
 
-    const apiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyNTAzOTEwZWFkNDQyOTNhODVlM2YyN2U2NjJlMmE1IiwiaCI6Im11cm11cjY0In0=";
+    const apiKey = "your-api-key-here"; // ← Replace with your actual ORS key
+    let routeLayer;
+
+    async function geocodeORS(query) {
+      const url = `https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(query)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.features || data.features.length === 0) {
+        throw new Error(`Location not found: ${query}`);
+      }
+      return data.features[0].geometry.coordinates; // [lon, lat]
+    }
 
     document.getElementById("routeForm").addEventListener("submit", async function (e) {
       e.preventDefault();
+
       const start = document.getElementById("start").value;
       const end = document.getElementById("end").value;
 
-      const geocode = async (place) => {
-        const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
-        const data = await resp.json();
-        return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
-      };
+      try {
+        // Use ORS geocoder instead of Nominatim
+        const [startCoords, endCoords] = await Promise.all([
+          geocodeORS(start),
+          geocodeORS(end)
+        ]);
 
-      const startCoords = await geocode(start);
-      const endCoords = await geocode(end);
+        const body = {
+          coordinates: [startCoords, endCoords]
+        };
 
-      const body = {
-        coordinates: [startCoords, endCoords]
-      };
+        const routeResp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+          method: 'POST',
+          headers: {
+            'Authorization': apiKey,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
 
-      const routeResp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
-        method: 'POST',
-        headers: {
-          'Authorization': apiKey,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
-      });
+        if (!routeResp.ok) throw new Error("Failed to fetch route");
 
-      const routeData = await routeResp.json();
-      const distance = routeData.features[0].properties.summary.distance / 1609.34; // meters to miles
-      document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
+        const routeData = await routeResp.json();
+        const distance = routeData.features[0].properties.summary.distance / 1609.34;
+        document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
 
-      L.geoJSON(routeData).addTo(map);
-      map.fitBounds([
-        [startCoords[1], startCoords[0]],
-        [endCoords[1], endCoords[0]]
-      ]);
+        if (routeLayer) {
+          map.removeLayer(routeLayer);
+        }
+
+        routeLayer = L.geoJSON(routeData).addTo(map);
+
+        // Leaflet expects [lat, lon]
+        const bounds = [
+          [startCoords[1], startCoords[0]],
+          [endCoords[1], endCoords[0]]
+        ];
+        map.fitBounds(bounds);
+
+      } catch (err) {
+        alert("Error: " + err.message);
+        console.error(err);
+      }
     });
   </script>
 </body>
