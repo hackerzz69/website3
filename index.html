@@ -31,30 +31,26 @@
       maxZoom: 18
     }).addTo(map);
 
-    const apiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyNTAzOTEwZWFkNDQyOTNhODVlM2YyN2U2NjJlMmE1IiwiaCI6Im11cm11cjY0In0="; // ← Replace with your actual ORS key
+    const apiKey = "your-api-key-here"; // Replace with your actual OpenRouteService key
     let routeLayer;
 
-    async function geocodeORS(query) {
-      const url = `https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(query)}`;
+    async function geocodeNominatim(place) {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
       const res = await fetch(url);
       const data = await res.json();
-      if (!data.features || data.features.length === 0) {
-        throw new Error(`Location not found: ${query}`);
-      }
-      return data.features[0].geometry.coordinates; // [lon, lat]
+      if (!data.length) throw new Error(`Location not found: ${place}`);
+      return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
     }
 
     document.getElementById("routeForm").addEventListener("submit", async function (e) {
       e.preventDefault();
-
       const start = document.getElementById("start").value;
       const end = document.getElementById("end").value;
 
       try {
-        // Use ORS geocoder instead of Nominatim
         const [startCoords, endCoords] = await Promise.all([
-          geocodeORS(start),
-          geocodeORS(end)
+          geocodeNominatim(start),
+          geocodeNominatim(end)
         ]);
 
         const body = {
@@ -81,13 +77,10 @@
         }
 
         routeLayer = L.geoJSON(routeData).addTo(map);
-
-        // Leaflet expects [lat, lon]
-        const bounds = [
+        map.fitBounds([
           [startCoords[1], startCoords[0]],
           [endCoords[1], endCoords[0]]
-        ];
-        map.fitBounds(bounds);
+        ]);
 
       } catch (err) {
         alert("Error: " + err.message);
