@@ -1,52 +1,57 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <title>Free Route & Mileage</title>
   <meta charset="utf-8" />
-  <title>Trucker Route Mapper</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     #map { height: 500px; margin-top: 20px; }
     body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
     input, button { padding: 8px; margin-top: 5px; width: 100%; }
-    button { background-color: black; color: white; border: none; cursor: pointer; }
-    label { margin-top: 10px; display: block; }
+    button { background: black; color: white; border: none; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h2>Trucker Route & Mileage</h2>
+  <h2>Route & Mileage (OpenRouteService)</h2>
   <form id="routeForm">
-    <label for="start">Start (City, ST):</label>
-    <input id="start" placeholder="e.g. Catoosa, OK" required />
-    <label for="end">End (City, ST):</label>
-    <input id="end" placeholder="e.g. Modesto, CA" required />
+    <label>Start (City, ST):</label>
+    <input type="text" id="start" value="Catoosa, OK" required>
+    <label>End (City, ST):</label>
+    <input type="text" id="end" value="Bowie, TX" required>
     <button type="submit">Get Route</button>
   </form>
+
   <p id="distance"></p>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    const apiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyNTAzOTEwZWFkNDQyOTNhODVlM2YyN2U2NjJlMmE1IiwiaCI6Im11cm11cjY0In0=";
     const map = L.map('map').setView([39, -98], 5);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18
+    }).addTo(map);
 
-    async function geocode(place) {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
-      const data = await res.json();
-      if (!data || data.length === 0) {
-        alert(`Location not found: ${place}`);
-        throw new Error("Invalid location");
-      }
-      return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
-    }
+    const apiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyNTAzOTEwZWFkNDQyOTNhODVlM2YyN2U2NjJlMmE1IiwiaCI6Im11cm11cjY0In0=";
 
-    async function getRoute(start, end) {
+    document.getElementById("routeForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const start = document.getElementById("start").value;
+      const end = document.getElementById("end").value;
+
+      const geocode = async (place) => {
+        const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
+        const data = await resp.json();
+        return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+      };
+
       const startCoords = await geocode(start);
       const endCoords = await geocode(end);
 
-      const body = { coordinates: [startCoords, endCoords] };
+      const body = {
+        coordinates: [startCoords, endCoords]
+      };
 
-      const response = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+      const routeResp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
         method: 'POST',
         headers: {
           'Authorization': apiKey,
@@ -55,20 +60,15 @@
         body: JSON.stringify(body)
       });
 
-      const geo = await response.json();
-      const dist = geo.features[0].properties.summary.distance / 1609.34;
-      document.getElementById('distance').innerText = `Distance: ${dist.toFixed(2)} miles`;
+      const routeData = await routeResp.json();
+      const distance = routeData.features[0].properties.summary.distance / 1609.34; // meters to miles
+      document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
 
-      L.geoJSON(geo).addTo(map);
-      const bounds = L.geoJSON(geo).getBounds();
-      map.fitBounds(bounds);
-    }
-
-    document.getElementById("routeForm").addEventListener("submit", async function(e) {
-      e.preventDefault();
-      const start = document.getElementById("start").value.trim();
-      const end = document.getElementById("end").value.trim();
-      getRoute(start, end);
+      L.geoJSON(routeData).addTo(map);
+      map.fitBounds([
+        [startCoords[1], startCoords[0]],
+        [endCoords[1], endCoords[0]]
+      ]);
     });
   </script>
 </body>
