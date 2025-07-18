@@ -88,7 +88,13 @@
         if (!routeResp.ok) throw new Error("Failed to fetch route");
 
         const routeData = await routeResp.json();
-        const distance = routeData.features[0].properties.summary.distance / 1609.34;
+
+if (!routeData.features || !routeData.features[0]) {
+  throw new Error("No route found. Please check locations and try again.");
+}
+
+const distance = routeData.features[0].properties.summary.distance / 1609.34;
+
         document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
 
         if (routeLayer) map.removeLayer(routeLayer);
