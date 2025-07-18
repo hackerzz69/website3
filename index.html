@@ -9,6 +9,7 @@
     body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
     input, button { padding: 8px; margin-top: 5px; width: 100%; }
     button { background: black; color: white; border: none; cursor: pointer; }
+    #distance, #routeStates { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -22,41 +23,60 @@
   </form>
 
   <p id="distance"></p>
+  <p id="routeStates"></p>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    const apiKey = "your-api-key-here"; // Replace with your ORS key
+    let routeLayer;
+
+    const stateAbbreviations = {
+      "Alabama": "AL", "Alaska": "AK", "Arizona": "AZ", "Arkansas": "AR", "California": "CA",
+      "Colorado": "CO", "Connecticut": "CT", "Delaware": "DE", "Florida": "FL", "Georgia": "GA",
+      "Hawaii": "HI", "Idaho": "ID", "Illinois": "IL", "Indiana": "IN", "Iowa": "IA", "Kansas": "KS",
+      "Kentucky": "KY", "Louisiana": "LA", "Maine": "ME", "Maryland": "MD", "Massachusetts": "MA",
+      "Michigan": "MI", "Minnesota": "MN", "Mississippi": "MS", "Missouri": "MO", "Montana": "MT",
+      "Nebraska": "NE", "Nevada": "NV", "New Hampshire": "NH", "New Jersey": "NJ", "New Mexico": "NM",
+      "New York": "NY", "North Carolina": "NC", "North Dakota": "ND", "Ohio": "OH", "Oklahoma": "OK",
+      "Oregon": "OR", "Pennsylvania": "PA", "Rhode Island": "RI", "South Carolina": "SC",
+      "South Dakota": "SD", "Tennessee": "TN", "Texas": "TX", "Utah": "UT", "Vermont": "VT",
+      "Virginia": "VA", "Washington": "WA", "West Virginia": "WV", "Wisconsin": "WI", "Wyoming": "WY"
+    };
+
     const map = L.map('map').setView([39, -98], 5);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18
     }).addTo(map);
 
-    const apiKey = "your-api-key-here"; // Replace with your actual OpenRouteService key
-    let routeLayer;
+    async function geocode(place) {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
+      const data = await res.json();
+      if (!data[0]) throw new Error(`Location not found: ${place}`);
+      return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+    }
 
-    async function geocodeNominatim(place) {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`;
+    async function getStateFromCoords(lat, lon) {
+      const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
       const res = await fetch(url);
       const data = await res.json();
-      if (!data.length) throw new Error(`Location not found: ${place}`);
-      return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+      const stateName = data.address?.state;
+      return stateAbbreviations[stateName] || null;
     }
 
     document.getElementById("routeForm").addEventListener("submit", async function (e) {
       e.preventDefault();
+
       const start = document.getElementById("start").value;
       const end = document.getElementById("end").value;
 
       try {
         const [startCoords, endCoords] = await Promise.all([
-          geocodeNominatim(start),
-          geocodeNominatim(end)
+          geocode(start),
+          geocode(end)
         ]);
 
-        const body = {
-          coordinates: [startCoords, endCoords]
-        };
-
+        const body = { coordinates: [startCoords, endCoords] };
         const routeResp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
           method: 'POST',
           headers: {
@@ -72,15 +92,25 @@
         const distance = routeData.features[0].properties.summary.distance / 1609.34;
         document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
 
-        if (routeLayer) {
-          map.removeLayer(routeLayer);
-        }
-
+        if (routeLayer) map.removeLayer(routeLayer);
         routeLayer = L.geoJSON(routeData).addTo(map);
         map.fitBounds([
           [startCoords[1], startCoords[0]],
           [endCoords[1], endCoords[0]]
         ]);
+
+        // Sample 10 points across route
+        const coords = routeData.features[0].geometry.coordinates;
+        const sampledCoords = coords.filter((_, idx) => idx % Math.ceil(coords.length / 10) === 0);
+
+        const stateSet = new Set();
+        for (const [lon, lat] of sampledCoords) {
+          const state = await getStateFromCoords(lat, lon);
+          if (state) stateSet.add(state);
+        }
+
+        const routeStates = Array.from(stateSet).join(" → ");
+        document.getElementById("routeStates").innerText = `Route of Travel: ${routeStates}`;
 
       } catch (err) {
         alert("Error: " + err.message);
