@@ -2,21 +2,26 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>ORS Route & State Travel</title>
+  <title>Trucker Route Mapper</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     #map { height: 500px; margin-top: 20px; }
     body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
     input, button { padding: 8px; margin-top: 5px; width: 100%; }
+    button { background-color: black; color: white; border: none; cursor: pointer; }
+    label { margin-top: 10px; display: block; }
   </style>
 </head>
 <body>
-  <h2>Route & Mileage</h2>
-  <input id="start" placeholder="Start (e.g. Catoosa, OK)" />
-  <input id="end" placeholder="End (e.g. Modesto, CA)" />
-  <button onclick="getRoute()">Get Route</button>
+  <h2>Trucker Route & Mileage</h2>
+  <form id="routeForm">
+    <label for="start">Start (City, ST):</label>
+    <input id="start" placeholder="e.g. Catoosa, OK" required />
+    <label for="end">End (City, ST):</label>
+    <input id="end" placeholder="e.g. Modesto, CA" required />
+    <button type="submit">Get Route</button>
+  </form>
   <p id="distance"></p>
-  <p id="routeStates"></p>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -28,22 +33,14 @@
     async function geocode(place) {
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
       const data = await res.json();
+      if (!data || data.length === 0) {
+        alert(`Location not found: ${place}`);
+        throw new Error("Invalid location");
+      }
       return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
     }
 
-    async function reverseGeocodeState(lat, lon) {
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-      const data = await res.json();
-      if (data.address && data.address.state) {
-        return data.address.state_code || data.address.state || '';
-      }
-      return '';
-    }
-
-    async function getRoute() {
-      const start = document.getElementById('start').value;
-      const end = document.getElementById('end').value;
-
+    async function getRoute(start, end) {
       const startCoords = await geocode(start);
       const endCoords = await geocode(end);
 
@@ -62,24 +59,17 @@
       const dist = geo.features[0].properties.summary.distance / 1609.34;
       document.getElementById('distance').innerText = `Distance: ${dist.toFixed(2)} miles`;
 
-      // Draw route
       L.geoJSON(geo).addTo(map);
       const bounds = L.geoJSON(geo).getBounds();
       map.fitBounds(bounds);
-
-      // Sample 5 points from the route
-      const coords = geo.features[0].geometry.coordinates;
-      const sample = [0, Math.floor(coords.length / 4), Math.floor(coords.length / 2), Math.floor(3 * coords.length / 4), coords.length - 1];
-
-      const states = new Set();
-      for (const i of sample) {
-        const [lon, lat] = coords[i];
-        const state = await reverseGeocodeState(lat, lon);
-        if (state) states.add(state);
-      }
-
-      document.getElementById('routeStates').innerText = `Route of Travel: ${Array.from(states).join(', ')}`;
     }
+
+    document.getElementById("routeForm").addEventListener("submit", async function(e) {
+      e.preventDefault();
+      const start = document.getElementById("start").value.trim();
+      const end = document.getElementById("end").value.trim();
+      getRoute(start, end);
+    });
   </script>
 </body>
 </html>
