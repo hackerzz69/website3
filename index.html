@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Free Route & Mileage</title>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 500px; margin-top: 20px; }
+    body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    input, button { padding: 8px; margin-top: 5px; width: 100%; }
+    button { background: black; color: white; border: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Route & Mileage (OpenRouteService)</h2>
+  <form id="routeForm">
+    <label>Start (City, ST):</label>
+    <input type="text" id="start" value="Catoosa, OK" required>
+    <label>End (City, ST):</label>
+    <input type="text" id="end" value="Bowie, TX" required>
+    <button type="submit">Get Route</button>
+  </form>
+
+  <p id="distance"></p>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([39, -98], 5);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18
+    }).addTo(map);
+
+    const apiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6IjcyNTAzOTEwZWFkNDQyOTNhODVlM2YyN2U2NjJlMmE1IiwiaCI6Im11cm11cjY0In0=";
+
+    document.getElementById("routeForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const start = document.getElementById("start").value;
+      const end = document.getElementById("end").value;
+
+      const geocode = async (place) => {
+        const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
+        const data = await resp.json();
+        return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+      };
+
+      const startCoords = await geocode(start);
+      const endCoords = await geocode(end);
+
+      const body = {
+        coordinates: [startCoords, endCoords]
+      };
+
+      const routeResp = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+        method: 'POST',
+        headers: {
+          'Authorization': apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+
+      const routeData = await routeResp.json();
+      const distance = routeData.features[0].properties.summary.distance / 1609.34; // meters to miles
+      document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
+
+      L.geoJSON(routeData).addTo(map);
+      map.fitBounds([
+        [startCoords[1], startCoords[0]],
+        [endCoords[1], endCoords[0]]
+      ]);
+    });
+  </script>
+</body>
+</html>
