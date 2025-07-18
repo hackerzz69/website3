@@ -76,4 +76,69 @@
       const end = document.getElementById("end").value;
       const currentMiles = parseFloat(document.getElementById("currentMiles").value);
 
-      if (isNaN(currentM
+      if (isNaN(currentMiles)) {
+        alert("Please enter a valid number for current miles.");
+        return;
+      }
+
+      try {
+        const [startCoords, endCoords] = await Promise.all([
+          geocodeNominatim(start),
+          geocodeNominatim(end)
+        ]);
+
+        const body = { coordinates: [startCoords, endCoords] };
+
+        const routeResp = await fetch(`${proxyUrl}/route`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+
+        const routeData = await routeResp.json();
+        console.log("Route response:", routeData);
+
+        if (!routeData.features || !routeData.features[0]) {
+          throw new Error("No route found. Please check locations and try again.");
+        }
+
+        const feature = routeData.features[0];
+        if (!feature.geometry || !feature.geometry.coordinates) {
+          throw new Error("Route geometry is missing.");
+        }
+
+        const distance = feature.properties.summary.distance / 1609.34;
+        const endingMiles = currentMiles + distance;
+
+        document.getElementById('distance').innerText = `Distance: ${distance.toFixed(2)} miles`;
+        document.getElementById('endMiles').innerText = `Ending Odometer: ${endingMiles.toFixed(2)} mi`;
+
+        if (routeLayer) map.removeLayer(routeLayer);
+        routeLayer = L.geoJSON(routeData).addTo(map);
+
+        map.fitBounds([
+          [startCoords[1], startCoords[0]],
+          [endCoords[1], endCoords[0]]
+        ]);
+
+        // Route of Travel (State Abbreviations)
+        const coords = feature.geometry.coordinates;
+        const sampledCoords = coords.filter((_, i) => i % Math.ceil(coords.length / 10) === 0);
+        const stateSet = new Set();
+
+        for (const [lon, lat] of sampledCoords) {
+          const state = await getStateFromCoords(lat, lon);
+          if (state) stateSet.add(state);
+        }
+
+        const routeStates = Array.from(stateSet).join(" → ");
+        document.getElementById("routeStates").innerText = `Route of Travel: ${routeStates}`;
+
+      } catch (err) {
+        alert("Error: " + err.message);
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>
