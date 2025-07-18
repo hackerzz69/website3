@@ -2,20 +2,21 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>ORS Route Finder</title>
+  <title>ORS Route & State Travel</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     #map { height: 500px; margin-top: 20px; }
-    body { font-family: sans-serif; padding: 20px; }
+    body { font-family: sans-serif; padding: 20px; max-width: 800px; margin: auto; }
     input, button { padding: 8px; margin-top: 5px; width: 100%; }
   </style>
 </head>
 <body>
   <h2>Route & Mileage</h2>
   <input id="start" placeholder="Start (e.g. Catoosa, OK)" />
-  <input id="end" placeholder="End (e.g. Bowie, TX)" />
+  <input id="end" placeholder="End (e.g. Modesto, CA)" />
   <button onclick="getRoute()">Get Route</button>
   <p id="distance"></p>
+  <p id="routeStates"></p>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -28,6 +29,15 @@
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(place)}`);
       const data = await res.json();
       return [parseFloat(data[0].lon), parseFloat(data[0].lat)];
+    }
+
+    async function reverseGeocodeState(lat, lon) {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+      const data = await res.json();
+      if (data.address && data.address.state) {
+        return data.address.state_code || data.address.state || '';
+      }
+      return '';
     }
 
     async function getRoute() {
@@ -52,11 +62,23 @@
       const dist = geo.features[0].properties.summary.distance / 1609.34;
       document.getElementById('distance').innerText = `Distance: ${dist.toFixed(2)} miles`;
 
+      // Draw route
       L.geoJSON(geo).addTo(map);
-      map.fitBounds([
-        [startCoords[1], startCoords[0]],
-        [endCoords[1], endCoords[0]]
-      ]);
+      const bounds = L.geoJSON(geo).getBounds();
+      map.fitBounds(bounds);
+
+      // Sample 5 points from the route
+      const coords = geo.features[0].geometry.coordinates;
+      const sample = [0, Math.floor(coords.length / 4), Math.floor(coords.length / 2), Math.floor(3 * coords.length / 4), coords.length - 1];
+
+      const states = new Set();
+      for (const i of sample) {
+        const [lon, lat] = coords[i];
+        const state = await reverseGeocodeState(lat, lon);
+        if (state) states.add(state);
+      }
+
+      document.getElementById('routeStates').innerText = `Route of Travel: ${Array.from(states).join(', ')}`;
     }
   </script>
 </body>
